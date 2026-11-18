@@ -89,3 +89,19 @@ GTK_THEME=Adwaita:dark honorkit
 
 The override applies to that process. The desktop theme remains your normal
 GNOME setting.
+
+## GNOME asks for a password after successful fingerprint login
+
+The prompt mentioning the **login keyring** comes from GNOME Keyring. Its
+encrypted contents are opened with the keyring password. GDM receives a
+successful biometric result without a password to pass to GNOME Keyring.
+Sign into GNOME with your password on the first login after boot. Then use
+the fingerprint for later unlocks of the same session. When logging in with
+a fingerprint first, enter the keyring password once when prompted.
+
+If password login still leaves the keyring locked, check the keyboard layout and
+try the previous password for that keyring. With the current keyring password,
+**Passwords and Keys** (Seahorse) can change the password on the Login keyring to
+match the current account password. Preserve the existing keyring and its contents.
+
+[GNOME Keyring PAM documentation](https://wiki.gnome.org/Projects/GnomeKeyring/Pam)
