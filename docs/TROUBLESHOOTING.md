@@ -76,3 +76,16 @@ arrive, inspect GNOME's shortcuts and the active desktop session.
 
 The [hardware report](REPORT.ru.md) contains observed results and
 [gesture installation](../gesture/INSTALL.md) contains the rollback.
+
+## GTK theme warnings
+
+Some Kali theme builds refer to missing header-bar images. If the application
+starts but the titlebar looks wrong, compare with GNOME's default theme for
+one invocation:
+
+```bash
+GTK_THEME=Adwaita:dark honorkit
+```
+
+The override applies to that process. The desktop theme remains your normal
+GNOME setting.
