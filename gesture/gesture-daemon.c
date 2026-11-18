@@ -2,6 +2,8 @@
  * Copyright (c) 2025 MadhiasM.
  * Based on honor-magicbook-art-touchpad-gestures by MadhiasM.
  */
+#include "settings.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/hidraw.h>
@@ -15,11 +17,9 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/signalfd.h>
+#include <time.h>
 #include <unistd.h>
 
-#define TOUCHPAD "/dev/honor-mra-touchpad"
-#define TARGET_VENDOR 0x35cc
-#define TARGET_PRODUCT 0x0104
 #define GESTURE_REPORT 0x0e
 #define GESTURE_REPORT_SIZE 9
 #define MRA_GESTURE_REPORT_SIZE 31
@@ -59,11 +59,56 @@ static const struct gesture *decode(const uint8_t *report, size_t size)
     return NULL;
 }
 
+static unsigned load_gesture_settings(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0)
+        return G_DEFAULT;
+    char text[12];
+    ssize_t length = read(fd, text, sizeof(text));
+    close(fd);
+    if (length < 2 || length == sizeof(text) || text[length - 1] != '\n')
+        return G_DEFAULT;
+    text[length - 1] = '\0';
+    unsigned value;
+    return parse_setting(text, G_ALL, &value) ? value : G_DEFAULT;
+}
+
+static const struct gesture *configured_gesture(const struct gesture *event, unsigned settings)
+{
+    bool swap = settings & G_SWAP_EDGES;
+    unsigned group;
+    switch (event->type) {
+    case 0x03:
+        group = swap ? G_VOLUME : G_BRIGHTNESS;
+        if (swap)
+            event += 2;
+        break;
+    case 0x04:
+        group = swap ? G_BRIGHTNESS : G_VOLUME;
+        if (swap)
+            event -= 2;
+        break;
+    case 0x06:
+    case 0x07:
+        group = G_SCREENSHOT;
+        break;
+    case 0x08:
+    case 0x09:
+        group = G_WINDOWS;
+        break;
+    default:
+        group = G_NOTIFICATIONS;
+        break;
+    }
+    return settings & group ? event : NULL;
+}
+
 static int setup_uinput(int fd)
 {
     struct uinput_setup setup = {
-        .id = {.bustype = BUS_VIRTUAL, .vendor = TARGET_VENDOR,
-               .product = TARGET_PRODUCT, .version = 1},
+        .id = {.bustype = BUS_VIRTUAL, .vendor = HONORKIT_VENDOR,
+               .product = HONORKIT_PRODUCT, .version = 1},
         .name = "HONOR MagicBook Art Gesture Keys",
     };
 
@@ -106,11 +151,13 @@ static int emit(int fd, const struct gesture *gesture)
     return written < 0 ? -1 : 0;
 }
 
-static int run(int hid, int signals, int output)
+static int run(int hid, int signals, int output, const char *settings_path)
 {
     struct pollfd sources[] = {{.fd = signals, .events = POLLIN},
                                {.fd = hid, .events = POLLIN}};
     uint8_t report[64];
+    unsigned settings = G_DEFAULT;
+    time_t loaded_at = -1;
 
     for (;;) {
         if (poll(sources, 2, -1) < 0) {
@@ -144,8 +191,15 @@ static int run(int hid, int signals, int output)
         if (output < 0) {
             puts(gesture->name);
             fflush(stdout);
-        } else if (emit(output, gesture) < 0) {
-            return -1;
+        } else {
+            struct timespec now;
+            if (settings_path && clock_gettime(CLOCK_MONOTONIC, &now) == 0 && now.tv_sec != loaded_at) {
+                settings = load_gesture_settings(settings_path);
+                loaded_at = now.tv_sec;
+            }
+            gesture = configured_gesture(gesture, settings);
+            if (gesture && emit(output, gesture) < 0)
+                return -1;
         }
     }
 }
@@ -172,9 +226,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    int hid = open(TOUCHPAD, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    int hid = open(HONORKIT_TOUCHPAD, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (hid < 0) {
-        perror(TOUCHPAD);
+        perror(HONORKIT_TOUCHPAD);
         return 1;
     }
     struct hidraw_devinfo info;
@@ -182,8 +236,8 @@ int main(int argc, char **argv)
         perror("HIDIOCGRAWINFO");
         return 1;
     }
-    if (info.bustype != BUS_I2C || info.vendor != TARGET_VENDOR || info.product != TARGET_PRODUCT) {
-        fprintf(stderr, "Unexpected HID device at %s\n", TOUCHPAD);
+    if (info.bustype != BUS_I2C || info.vendor != HONORKIT_VENDOR || info.product != HONORKIT_PRODUCT) {
+        fprintf(stderr, "Unexpected HID device at %s\n", HONORKIT_TOUCHPAD);
         return 1;
     }
 
@@ -196,7 +250,7 @@ int main(int argc, char **argv)
         }
     }
 
-    int result = run(hid, signals, output);
+    int result = run(hid, signals, output, HONORKIT_SETTINGS);
     if (result < 0)
         perror("gesture input");
     if (output >= 0) {

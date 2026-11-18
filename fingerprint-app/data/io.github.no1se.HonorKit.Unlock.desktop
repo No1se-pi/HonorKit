@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=HonorKit Unlock Animation
+Exec=honorkit --unlock-watch
+Terminal=false
+OnlyShowIn=GNOME;
+NoDisplay=true

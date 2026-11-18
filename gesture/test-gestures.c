@@ -61,6 +61,15 @@ int main(void)
     assert(!decode(report, sizeof(report)));
     assert(emit(-1, &gestures[0]) == -1 && errno == EBADF);
 
+    assert(configured_gesture(&gestures[0], G_DEFAULT | G_SWAP_EDGES) == &gestures[2]);
+    assert(configured_gesture(&gestures[3], G_DEFAULT | G_SWAP_EDGES) == &gestures[1]);
+    assert(!configured_gesture(&gestures[2], G_DEFAULT & ~G_VOLUME));
+    assert(!configured_gesture(&gestures[0], (G_DEFAULT & ~G_VOLUME) | G_SWAP_EDGES));
+    assert(!configured_gesture(&gestures[5], G_DEFAULT & ~G_SCREENSHOT));
+    unsigned value;
+    assert(parse_setting("31", G_ALL, &value) && value == G_DEFAULT);
+    assert(!parse_setting("64", G_ALL, &value) && !parse_setting(" 1", G_ALL, &value));
+
     int hid[2];
     assert(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, hid) == 0);
     sigset_t mask;
@@ -73,7 +82,7 @@ int main(void)
         close(hid[1]);
         int signals = signalfd(-1, &mask, SFD_CLOEXEC);
         assert(signals >= 0);
-        _exit(run(hid[0], signals, stream[1]) == 0 ? 0 : 1);
+        _exit(run(hid[0], signals, stream[1], NULL) == 0 ? 0 : 1);
     }
 
     alarm(5);
@@ -90,7 +99,7 @@ int main(void)
     close(hid[1]);
     int signals = signalfd(-1, &mask, SFD_CLOEXEC);
     assert(signals >= 0);
-    assert(run(hid[0], signals, stream[1]) == -1 && errno == ENODEV);
+    assert(run(hid[0], signals, stream[1], NULL) == -1 && errno == ENODEV);
     alarm(0);
     puts("PASS: 9 gesture mappings, invalid reports, evdev frames, I/O error, idle SIGTERM, disconnect");
 }

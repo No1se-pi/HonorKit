@@ -20,7 +20,7 @@ make install-app
 
 Open **HonorKit** from GNOME or type `honorkit` in a graphical session. The command opens the same window. For a one-off run from source, use `cargo run --locked --manifest-path fingerprint-app/Cargo.toml`. Run `make uninstall-app` to remove the user-level launcher and executable.
 
-The interface is in Russian. The enrollment animation runs inside HonorKit. GNOME's login and lock screens use their existing interface.
+The interface is in Russian. The application includes an enrollment animation and configurable feedback after fingerprint unlock. The settings dialog can also enable, disable, and swap supported touchpad gestures and set haptic strength when the system helper is installed.
 
 [Русское руководство пользователя](docs/USAGE.ru.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Architecture and security boundaries](docs/ARCHITECTURE.md)
 

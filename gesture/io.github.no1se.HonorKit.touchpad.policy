@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <action id="io.github.no1se.HonorKit.touchpad">
+    <description>Change HonorKit touchpad settings</description>
+    <description xml:lang="ru">Изменение настроек тачпада HonorKit</description>
+    <message>Administrator authentication is required to change touchpad settings</message>
+    <message xml:lang="ru">Для изменения настроек тачпада нужен пароль администратора</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/libexec/honorkit-touchpad-config</annotate>
+  </action>
+</policyconfig>

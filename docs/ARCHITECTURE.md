@@ -49,3 +49,20 @@ The Rust app executes as the current user. The gesture daemon's only input
 and output device access is the matched touchpad and uinput. The private
 driver runs under the distro fprintd service. The package-supplied GDM PAM
 profile is a separate, optional integration for login and unlock.
+
+## Unlock feedback and touchpad settings
+
+The per-user watcher observes `LockedHint` in the current graphical
+logind session and a successful fprintd `VerifyStatus`. It correlates the
+two events in a bounded interval and displays a short GTK card after the
+session unlocks. GNOME and PAM still perform authentication. A standalone
+verification in an already unlocked session does not trigger the card.
+The watcher starts from an XDG autostart entry on GNOME.
+[logind session API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
+
+Touchpad settings use a small privileged executable. Polkit asks for
+active-session administrator authentication. The executable accepts only a
+gesture mask or one of three haptic levels. It writes the gesture mask
+atomically under `/etc`. The existing daemon keeps its read-only hidraw
+access. Haptic writes verify DMI model and HID identity and send one
+fixed-format report. There is no firmware readback for that setting.

@@ -1,5 +1,7 @@
 mod art;
 mod fprint;
+mod preferences;
+mod unlock;
 
 use art::{Art, Mode};
 use fprint::{Reader, error_text};
@@ -64,6 +66,15 @@ impl View {
         let reload = gtk::Button::from_icon_name("view-refresh-symbolic");
         reload.set_tooltip_text(Some("Обновить список"));
         header.pack_start(&reload);
+        let settings = gtk::Button::from_icon_name("emblem-system-symbolic");
+        settings.set_tooltip_text(Some("Настройки HonorKit"));
+        header.pack_end(&settings);
+        let parent = window.downgrade();
+        settings.connect_clicked(move |_| {
+            if let Some(parent) = parent.upgrade() {
+                preferences::show(&parent);
+            }
+        });
         window.set_titlebar(Some(&header));
         let content = gtk::Box::new(gtk::Orientation::Vertical, 20);
         content.set_margin_top(20);
@@ -540,8 +551,15 @@ fn main() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     }
     glib::set_application_name("HonorKit");
+    let watch = std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--unlock-watch");
     let app = gtk::Application::builder()
-        .application_id("io.github.no1se.HonorKit")
+        .application_id(if watch {
+            "io.github.no1se.HonorKit.Unlock"
+        } else {
+            "io.github.no1se.HonorKit"
+        })
         .build();
     app.connect_startup(|_| {
         let css = gtk::CssProvider::new();
@@ -554,12 +572,34 @@ fn main() -> glib::ExitCode {
             );
         }
     });
-    app.connect_activate(|app| {
-        if let Some(window) = app.active_window() {
-            window.present();
-        } else {
-            View::new(app);
-        }
-    });
-    app.run()
+    if watch {
+        let started = Cell::new(false);
+        app.connect_activate(move |app| {
+            if started.replace(true) {
+                return;
+            }
+            let hold = app.hold();
+            let app = app.clone();
+            glib::spawn_future_local(async move {
+                let _hold = hold;
+                for attempt in 0..10 {
+                    match unlock::watch(&app).await {
+                        Ok(_subscriptions) => std::future::pending::<()>().await,
+                        Err(error) if attempt == 9 => eprintln!("HonorKit unlock: {error}"),
+                        Err(_) => glib::timeout_future_seconds(1).await,
+                    }
+                }
+            });
+        });
+        app.run_with_args(&["honorkit"])
+    } else {
+        app.connect_activate(|app| {
+            if let Some(window) = app.active_window() {
+                window.present();
+            } else {
+                View::new(app);
+            }
+        });
+        app.run()
+    }
 }

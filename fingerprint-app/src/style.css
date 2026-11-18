@@ -17,3 +17,11 @@
 }
 .boxed-prints row + row { border-top: 1px solid alpha(currentColor, 0.12); }
 .print-row { padding: 7px 12px; min-height: 32px; }
+
+.unlock-card {
+    color: #effff8;
+    background: #142b25;
+    padding: 5px 17px 17px;
+    border: 1px solid #3d8067;
+    border-radius: 18px;
+}

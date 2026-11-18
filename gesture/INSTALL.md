@@ -41,6 +41,8 @@ sudo systemctl start honor-mra-gestures.service
 
 ## Откат
 
+Если установлен модуль настроек, сначала откатите его по инструкции ниже.
+
 ```bash
 sudo systemctl stop honor-mra-gestures.service
 sudo rm -f /etc/udev/rules.d/70-honor-mra-touchpad.rules \
@@ -57,3 +59,47 @@ sudo udevadm trigger --action=change --settle "/sys$touchpad_path"
 штатный модуль можно оставить до перезагрузки или выгрузить через
 `sudo modprobe -r uinput`, если он был загружен только для этого теста и
 его больше никто не использует.
+
+## Настройки через HonorKit
+
+Сначала установите и проверьте службу по шагам выше. Для добавления
+настроек к работающей службе выполните из этого репозитория:
+
+```bash
+make gestures test-gestures
+bash gesture/enable-settings.sh
+```
+
+Обновление сохраняет прежний бинарник в
+`/var/backups/honorkit-gesture-daemon.pre-settings`, устанавливает
+`/usr/local/libexec/honorkit-touchpad-config` и правило Polkit,
+затем перезапускает службу. Настройки по умолчанию соответствуют
+прежней раскладке. Статус можно проверить через `pkaction` и
+`systemctl status honor-mra-gestures.service`.
+
+В HonorKit откройте настройки через кнопку с шестерёнкой. Управляйте
+яркостью, громкостью, скриншотами, оконными жестами и уведомлениями.
+При желании поменяйте местами края яркости и громкости. Кнопка
+«Сохранить жесты» записывает системную конфигурацию после авторизации.
+Изменение действует начиная со следующего жеста, обычно в течение секунды.
+
+Для силы отклика выберите слабый, средний или сильный уровень и отдельно
+нажмите «Установить силу». Команда поддерживается для MRA-XXX с I²C HID
+`35cc:0104`. Прошивка не сообщает текущее значение, поэтому интерфейс
+подтверждает отправку команды. Проверьте результат физическим нажатием.
+Для возврата к прежнему отклику выберите прежний уровень, если он известен.
+Удаление программы само по себе не отправляет другую настройку в тачпад.
+
+Чтобы откатить обновление, восстановите прежний бинарник и удалите новые
+компоненты. Если файл конфигурации был создан, удалите и его.
+
+```bash
+sudo install -m 0755 /var/backups/honorkit-gesture-daemon.pre-settings \
+  /usr/local/libexec/honor-mra-gesture-daemon.new
+sudo mv -T /usr/local/libexec/honor-mra-gesture-daemon.new \
+  /usr/local/libexec/honor-mra-gesture-daemon
+sudo systemctl restart honor-mra-gestures.service
+sudo rm -f /usr/local/libexec/honorkit-touchpad-config \
+  /usr/share/polkit-1/actions/io.github.no1se.HonorKit.touchpad.policy \
+  /etc/honorkit-gestures.conf /var/backups/honorkit-gesture-daemon.pre-settings
+```
