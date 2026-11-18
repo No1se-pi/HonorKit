@@ -1,0 +1,433 @@
+#!/usr/bin/python3 -I
+# SPDX-License-Identifier: GPL-3.0-only
+"""Manage the optional HonorKit GRUB theme and ALC256 speaker patch."""
+
+import argparse
+import fcntl
+import hashlib
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import struct
+import subprocess
+import tempfile
+
+DATA = Path("/usr/local/share/honorkit")
+GRUB_CFG = Path("/boot/grub/grub.cfg")
+GRUB_THEME = GRUB_CFG.parent / "themes/honorkit-frieren-theme"
+GRUB_LEGACY_THEME = GRUB_CFG.parent / "themes/honorkit-frieren-native"
+GRUB_EFI = Path("/boot/efi/EFI/kali/grubx64.efi")
+EFI_VARS = Path("/sys/firmware/efi/efivars")
+GRUB_NORMAL = GRUB_CFG.parent / "x86_64-efi/normal.mod"
+GRUB_PACKAGE_NORMAL = Path("/usr/lib/grub/x86_64-efi/normal.mod")
+GRUB_BACKUPS = Path("/var/backups")
+GRUB_NORMAL_BACKUP = GRUB_BACKUPS / "honorkit-grub-normal.mod"
+NORMAL_HASH = "c062f86c3ebc636b3379c7c971e24eddde07c9f08142e69f5240d31d97d4f172"
+PATCHED_NORMAL_HASH = "81833807e31706e3047b84497208024b50de24760b6e0159c6eecbbdbed80d3f"
+GFXMODE = 'GRUB_GFXMODE="3120x2080,1920x1280,1536x1024,1280x800,1280x720,auto"\n'
+GRUB_DROP_IN = Path("/etc/default/grub.d/zzzz-honorkit-frieren.cfg")
+GRUB_SETTINGS = (
+    f'GRUB_THEME="{GRUB_THEME}/theme.txt"\n'
+    'GRUB_BACKGROUND=""\n'
+    'GRUB_TERMINAL_OUTPUT="gfxterm"\n'
+    + GFXMODE
+).encode()
+GRUB_LEGACY_SETTINGS = (
+    'GRUB_THEME=""\n'
+    f'GRUB_BACKGROUND="{GRUB_LEGACY_THEME}/frieren-menu.png"\n'
+    f'GRUB_FONT="{GRUB_LEGACY_THEME}/frieren-menu.pf2"\n'
+    'GRUB_TERMINAL_OUTPUT="gfxterm"\n'
+    + GFXMODE
+).encode()
+GRUB_THEME_FILES = (
+    "theme.txt", "background.png", "panel.png", "seal.png",
+    "menu.pf2", "small.pf2", "title.pf2",
+    *(f"select_{side}.png" for side in ("n", "ne", "e", "se", "s", "sw", "w", "nw", "c")),
+    *(f"icons/{name}.png" for name in (
+        "debian", "gnu-linux", "gnu", "kali", "linux", "os", "recovery", "uefi", "windows"
+    )),
+)
+AUDIO_PATCH = Path("/usr/lib/firmware/honor-mra-alc256-speakers.fw")
+AUDIO_DROP_IN = Path("/etc/modprobe.d/90-honor-mra-audio.conf")
+BOOT_LINE = re.compile(
+    rb"^\s*(?:(?:menuentry|submenu|linux(?:efi)?|initrd(?:efi)?|chainloader|fwsetup)\b"
+    rb"|set (?:timeout(?:_style)?|default)=)"
+)
+GRUB_GRAPHICS_SECTIONS = re.compile(
+    rb"(?ms)^### BEGIN /etc/grub\.d/(00_header|05_debian_theme) ###\n"
+    rb".*?^### END /etc/grub\.d/\1 ###\n"
+)
+
+
+def run(*args, capture=False):
+    return subprocess.run(
+        args, check=True, stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+    ).stdout
+
+
+def matches(path, content):
+    return path.is_file() and not path.is_symlink() and path.read_bytes() == content
+
+
+def write_new(path, content):
+    """Publish a complete file and fail if the destination already exists."""
+    with tempfile.NamedTemporaryFile(dir=path.parent) as staged:
+        staged.write(content)
+        staged.flush()
+        os.chmod(staged.name, 0o644)
+        staged_path = Path(staged.name)
+        os.link(staged_path, path)
+
+
+def boot_lines(config):
+    return [line.strip() for line in config.splitlines() if BOOT_LINE.match(line)]
+
+
+def replace_bytes(path, content):
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            staged = Path(handle.name)
+            os.fchmod(handle.fileno(), path.stat().st_mode & 0o777)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(staged, path)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+
+
+def digest(content):
+    return hashlib.sha256(content).hexdigest()
+
+
+def embeds_normal(image):
+    """Inspect the x86_64 EFI image's GRUB module table."""
+    pe_offset, = struct.unpack_from("<I", image, 0x3c)
+    if image[:2] != b"MZ" or image[pe_offset:pe_offset + 4] != b"PE\0\0":
+        raise ValueError("Не удалось прочитать образ GRUB EFI.")
+    machine, section_count = struct.unpack_from("<HH", image, pe_offset + 4)
+    optional_size, = struct.unpack_from("<H", image, pe_offset + 20)
+    if machine != 0x8664:
+        raise ValueError("Образ GRUB EFI имеет другую архитектуру.")
+    sections = pe_offset + 24 + optional_size
+    for index in range(section_count):
+        section = sections + index * 40
+        if image[section:section + 8].rstrip(b"\0") == b"mods":
+            size, offset = struct.unpack_from("<II", image, section + 16)
+            modules = image[offset:offset + size]
+            break
+    else:
+        raise ValueError("В образе GRUB EFI отсутствует таблица модулей.")
+
+    magic, offset, end = struct.unpack_from("<4s4xQQ", modules)
+    if magic != b"mimg" or not 24 <= offset <= end <= len(modules):
+        raise ValueError("Таблица модулей GRUB EFI имеет неизвестный формат.")
+    while offset < end:
+        kind, size = struct.unpack_from("<II", modules, offset)
+        if not 8 <= size <= end - offset:
+            raise ValueError("Таблица модулей GRUB EFI повреждена.")
+        if kind == 0:  # OBJ_TYPE_ELF
+            elf = modules[offset + 8:offset + size]
+            if not elf.startswith(b"\x7fELF\x02\x01"):
+                raise ValueError("Встроенный модуль GRUB имеет неизвестный формат.")
+            table, = struct.unpack_from("<Q", elf, 40)
+            stride, count, names_index = struct.unpack_from("<HHH", elf, 58)
+            names, length = struct.unpack_from("<QQ", elf, table + names_index * stride + 24)
+            strings = elf[names:names + length]
+            for index in range(count):
+                entry = table + index * stride
+                name, = struct.unpack_from("<I", elf, entry)
+                if strings[name:].startswith(b".modname\0"):
+                    start, length = struct.unpack_from("<QQ", elf, entry + 24)
+                    if elf[start:start + length] == b"normal\0":
+                        return True
+                    break
+            else:
+                raise ValueError("Во встроенном модуле GRUB отсутствует имя.")
+        offset += size
+    return False
+
+
+def patched_normal(original):
+    # grub_show_menu + 0x953: call *%rax, whose relocation loads grub_cls.
+    # The selected-entry call and automatic branch are outside these two bytes.
+    offset = 0x40 + 0x76b3
+    if digest(original) != NORMAL_HASH or original[offset:offset + 2] != b"\xff\xd0":
+        raise ValueError("Исправление Enter рассчитано на GRUB 2.14-2+kali1 amd64.")
+    patched = original[:offset] + b"\x90\x90" + original[offset + 2:]
+    if digest(patched) != PATCHED_NORMAL_HASH:
+        raise ValueError("Контрольная сумма исправленного модуля GRUB не совпала.")
+    return patched
+
+
+def check_grub_efi():
+    secure_boot = list(EFI_VARS.glob("SecureBoot-*"))
+    if len(secure_boot) != 1 or secure_boot[0].read_bytes()[4:] != b"\0":
+        raise ValueError("Этот вариант темы проверен с выключенным Secure Boot.")
+    entries = run("/usr/bin/efibootmgr", "-v", capture=True).splitlines()
+    current = next((line.split()[-1] for line in entries if line.startswith(b"BootCurrent: ")), None)
+    if current is None:
+        raise ValueError("Не удалось определить текущую запись UEFI.")
+    active = next((line.lower() for line in entries if line.startswith(b"Boot" + current + b"*")), b"")
+    partuuid = run("/usr/bin/findmnt", "-n", "-o", "PARTUUID", "--mountpoint", GRUB_EFI.parents[2],
+                   capture=True).strip().lower()
+    if (not partuuid or b",gpt," + partuuid + b"," not in active
+            or b"\\efi\\kali\\grubx64.efi" not in active):
+        raise ValueError("Текущая запись UEFI должна запускать EFI/kali/grubx64.efi.")
+    try:
+        embedded = embeds_normal(GRUB_EFI.read_bytes())
+    except struct.error as error:
+        raise ValueError("Не удалось разобрать таблицу модулей GRUB EFI.") from error
+    if embedded:
+        raise ValueError("GRUB EFI уже содержит normal.mod. Требуется внешний модуль.")
+
+
+def regenerate_grub(installing):
+    previous = GRUB_CFG.read_bytes()
+    with tempfile.TemporaryDirectory(prefix=".honorkit-", dir=GRUB_CFG.parent) as directory:
+        candidate = Path(directory) / "grub.cfg"
+        run("/usr/sbin/grub-mkconfig", "-o", candidate)
+        run("/usr/bin/grub-script-check", candidate)
+        generated = candidate.read_bytes()
+        entries = boot_lines(previous)
+        if (not any(line.startswith(b"menuentry ") for line in entries)
+                or entries != boot_lines(generated)
+                or GRUB_GRAPHICS_SECTIONS.sub(b"", previous) != GRUB_GRAPHICS_SECTIONS.sub(b"", generated)):
+            raise ValueError("Список, команды или таймер загрузки изменились. Исходный grub.cfg сохранён.")
+        lines = [line.strip() for line in generated.splitlines()]
+        suffix = f"/{GRUB_THEME.name}/theme.txt".encode()
+        theme_active = any(line.startswith(b"set theme=") and line.endswith(suffix) for line in lines)
+        if installing:
+            fonts = ("menu.pf2", "small.pf2", "title.pf2")
+            loaded = all(any(
+                line.startswith(b"loadfont ") and line.endswith(f"/{GRUB_THEME.name}/{font}".encode())
+                for line in lines
+            ) for font in fonts)
+            if (not theme_active or not loaded or b"insmod gfxmenu" not in lines
+                    or b"terminal_output gfxterm" not in lines
+                    or any(b"background_image " in line for line in lines)):
+                raise ValueError("GRUB не выбрал полный комплект темы Frieren.")
+        elif theme_active or f"/{GRUB_LEGACY_THEME.name}/".encode() in generated:
+            raise ValueError("Конфигурация всё ещё ссылается на файлы темы HonorKit.")
+        action = "install" if installing else "remove"
+        backup = GRUB_BACKUPS / f"honorkit-frieren.before-{action}.cfg"
+        with tempfile.TemporaryDirectory(dir=backup.parent) as backup_stage:
+            snapshot = Path(backup_stage) / backup.name
+            snapshot.write_bytes(previous)
+            snapshot.chmod(0o600)
+            os.replace(snapshot, backup)
+        if GRUB_CFG.read_bytes() != previous:
+            raise ValueError("Другая программа обновила grub.cfg. Повторите операцию позже.")
+        if installing and grub_status() != "installed":
+            raise ValueError("Во время установки изменились файлы темы или normal.mod.")
+        candidate.chmod(0o600)
+        os.replace(candidate, GRUB_CFG)
+
+
+def grub_status():
+    if matches(GRUB_DROP_IN, GRUB_LEGACY_SETTINGS):
+        return "legacy"
+    if not matches(GRUB_DROP_IN, GRUB_SETTINGS):
+        return "absent"
+    if (GRUB_NORMAL.is_file() and not GRUB_NORMAL.is_symlink() and not GRUB_THEME.is_symlink()
+            and GRUB_PACKAGE_NORMAL.is_file() and digest(GRUB_PACKAGE_NORMAL.read_bytes()) == NORMAL_HASH
+            and digest(GRUB_NORMAL.read_bytes()) == PATCHED_NORMAL_HASH
+            and all((GRUB_THEME / asset).is_file() for asset in GRUB_THEME_FILES)):
+        return "installed"
+    return "repair"
+
+
+def install_grub():
+    status = grub_status()
+    if status == "legacy":
+        raise ValueError("Сначала удалите прежний вариант Frieren через HonorKit.")
+    if status == "installed":
+        return
+    check_grub_efi()
+    original = GRUB_PACKAGE_NORMAL.read_bytes()
+    patched = patched_normal(original)
+    if not (matches(GRUB_NORMAL, original) or matches(GRUB_NORMAL, patched)):
+        raise ValueError("Активный normal.mod отличается от поддерживаемых вариантов.")
+    already_patched = matches(GRUB_NORMAL, patched)
+    owned_backup = matches(GRUB_NORMAL_BACKUP, original)
+    if not owned_backup and (GRUB_NORMAL_BACKUP.exists() or GRUB_NORMAL_BACKUP.is_symlink()):
+        raise ValueError("Путь резервной копии normal.mod уже занят.")
+    if status == "absent" and any(
+        path.exists() or path.is_symlink() for path in (GRUB_DROP_IN, GRUB_THEME)
+    ):
+        raise ValueError("Каталог или файл конфигурации Frieren уже занят.")
+    if status == "repair" and (GRUB_THEME.is_symlink() or any(
+        not (GRUB_THEME / asset).is_file() for asset in GRUB_THEME_FILES
+    )):
+        raise ValueError("Удалите неполную копию Frieren через HonorKit перед переустановкой.")
+
+    added_theme = added_settings = added_backup = changed_module = False
+    try:
+        if status == "absent":
+            with tempfile.TemporaryDirectory(prefix=".honorkit-", dir=GRUB_THEME.parent) as directory:
+                stage = Path(directory) / "theme"
+                (stage / "icons").mkdir(parents=True, mode=0o755)
+                for asset in GRUB_THEME_FILES:
+                    shutil.copyfile(DATA / "frieren" / asset, stage / asset)
+                    (stage / asset).chmod(0o644)
+                stage.chmod(0o755)
+                (stage / "icons").chmod(0o755)
+                stage.rename(GRUB_THEME)
+                added_theme = True
+            write_new(GRUB_DROP_IN, GRUB_SETTINGS)
+            added_settings = True
+        if not already_patched:
+            if not owned_backup:
+                write_new(GRUB_NORMAL_BACKUP, original)
+                added_backup = True
+            if not matches(GRUB_NORMAL, original):
+                raise ValueError("Другая программа обновила normal.mod.")
+            replace_bytes(GRUB_NORMAL, patched)
+            changed_module = True
+        regenerate_grub(True)
+    except BaseException:
+        if changed_module and matches(GRUB_NORMAL, patched):
+            replace_bytes(GRUB_NORMAL, original)
+        if added_backup:
+            GRUB_NORMAL_BACKUP.unlink()
+        if added_settings:
+            GRUB_DROP_IN.unlink()
+        if added_theme:
+            shutil.rmtree(GRUB_THEME)
+        raise
+
+
+def remove_grub():
+    if matches(GRUB_DROP_IN, GRUB_SETTINGS):
+        settings, theme = GRUB_SETTINGS, GRUB_THEME
+    elif matches(GRUB_DROP_IN, GRUB_LEGACY_SETTINGS):
+        settings, theme = GRUB_LEGACY_SETTINGS, GRUB_LEGACY_THEME
+    elif any(path.exists() or path.is_symlink() for path in (GRUB_DROP_IN, GRUB_THEME, GRUB_LEGACY_THEME)):
+        raise ValueError("Файлы темы отличаются от штатной установки HonorKit.")
+    else:
+        return
+
+    original = patched = None
+    if theme == GRUB_THEME and (GRUB_NORMAL_BACKUP.exists() or GRUB_NORMAL_BACKUP.is_symlink()):
+        if GRUB_NORMAL_BACKUP.is_symlink():
+            raise ValueError("Некорректная резервная копия normal.mod.")
+        original = GRUB_NORMAL_BACKUP.read_bytes()
+        patched = patched_normal(original)
+
+    GRUB_DROP_IN.unlink()
+    restored = False
+    try:
+        if patched is not None and matches(GRUB_NORMAL, patched):
+            replace_bytes(GRUB_NORMAL, original)
+            restored = True
+        regenerate_grub(False)
+    except BaseException:
+        if restored and matches(GRUB_NORMAL, original):
+            replace_bytes(GRUB_NORMAL, patched)
+        write_new(GRUB_DROP_IN, settings)
+        raise
+    if original is not None:
+        GRUB_NORMAL_BACKUP.unlink()
+    if theme.is_dir() and not theme.is_symlink():
+        shutil.rmtree(theme)
+
+
+def manage_grub(installing):
+    if not EFI_VARS.is_dir() or not GRUB_CFG.is_file():
+        raise ValueError("Требуется уже установленный GRUB на Kali в режиме UEFI.")
+    (install_grub if installing else remove_grub)()
+
+
+def check_audio():
+    dmi = Path("/sys/class/dmi/id")
+    if [(dmi / key).read_text().strip() for key in ("sys_vendor", "product_name", "product_version") ] != [
+        "HONOR", "MRA-XXX", "M1020",
+    ]:
+        raise ValueError("Аудиоправка проверена только на HONOR MRA-XXX M1020.")
+    pci = Path("/sys/bus/pci/devices/0000:00:1f.3")
+    if [(pci / name).read_text().strip() for name in ("vendor", "device", "subsystem_vendor", "subsystem_device")] != [
+        "0x8086", "0x7e28", "0x1ee7", "0x2059",
+    ] or (pci / "driver").resolve().name != "sof-audio-pci-intel-mtl":
+        raise ValueError("Требуется контроллер Meteor Lake 1ee7:2059 со штатным Intel SOF.")
+    for codec in Path("/sys/class/sound").glob("hwC*D0"):
+        if (codec / "vendor_id").read_text().strip() != "0x10ec0256":
+            continue
+        if (codec / "subsystem_id").read_text().strip() != "0x1ee72060":
+            continue
+        override = (codec / "driver_pin_configs").read_text().splitlines()
+        if any(line.startswith("0x14 ") for line in override):
+            raise ValueError("Ядро уже задаёт конфигурацию выхода 0x14. Проверьте штатный звук.")
+        if "0x14 0x411111f0" in (codec / "init_pin_configs").read_text().splitlines():
+            break
+    else:
+        raise ValueError("Совместимый Realtek ALC256 1ee7:2060 со штатной разводкой не найден.")
+    if b"patch:" not in run("/usr/sbin/modinfo", "-p", "snd_soc_hdac_hda", capture=True):
+        raise ValueError("Текущее ядро не поддерживает загрузку конфигурации HDA через SOF.")
+
+
+def audio_contents():
+    return {path: (DATA / path.name).read_bytes() for path in (AUDIO_PATCH, AUDIO_DROP_IN)}
+
+
+def manage_audio(installing):
+    files = audio_contents()
+    if installing:
+        if all(matches(path, data) for path, data in files.items()):
+            return
+        check_audio()
+        options = run("/usr/sbin/modprobe", "-c", capture=True)
+        if re.search(rb"^options snd[_-]soc[_-]hdac[_-]hda .*\bpatch=", options, re.MULTILINE):
+            raise ValueError("Модуль SOF уже использует другую правку HDA.")
+    for path, data in files.items():
+        if path.is_symlink() or (path.exists() and not matches(path, data)):
+            raise ValueError(f"Обнаружен другой файл {path}. Проверьте его вручную.")
+    if installing:
+        written = []
+        try:
+            for path, data in files.items():
+                if not matches(path, data):
+                    write_new(path, data)
+                    written.append(path)
+        except BaseException:
+            for path in reversed(written):
+                path.unlink()
+            raise
+    else:
+        # Leave the firmware available until the persistent module option has been removed.
+        for path in reversed(files):
+            path.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("operation", choices=("status", "install", "remove"))
+    parser.add_argument("component", choices=("grub", "audio"))
+    args = parser.parse_args()
+    is_grub = args.component == "grub"
+    if args.operation == "status":
+        if is_grub:
+            print(grub_status())
+        else:
+            installed = all(matches(path, data) for path, data in audio_contents().items())
+            print("installed" if installed else "absent")
+        return
+    if os.geteuid() != 0 or platform.machine() != "x86_64" or platform.freedesktop_os_release()["ID"] != "kali":
+        raise ValueError("Эта операция требует прав администратора на Kali Linux amd64.")
+    # The policy starts the fixed helper. Serialize GUI and CLI operations.
+    with open("/run/honorkit-system.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        (manage_grub if is_grub else manage_audio)(args.operation == "install")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(error.stderr.decode(errors="replace").strip() or str(error)) from None
+    except (OSError, ValueError) as error:
+        raise SystemExit(str(error)) from None

@@ -1,6 +1,7 @@
 mod art;
 mod fprint;
 mod preferences;
+mod system_tools;
 mod unlock;
 
 use art::{Art, Mode};

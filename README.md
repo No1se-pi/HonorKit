@@ -1,12 +1,14 @@
 # HonorKit
 
-Touchpad and biometric support for the HONOR MagicBook Art 14 (MRA-XXX), with a small Rust/GTK 4 app for managing fingerprints through fprintd.
+Touchpad, biometric, speaker and boot theme support for the HONOR MagicBook Art 14 (MRA-XXX), with a small Rust/GTK 4 app for managing fingerprints through fprintd.
 
 | Component | Hardware or interface | Tested on |
 | --- | --- | --- |
 | Touchpad gestures | I²C HID `35cc:0104` | Kali Rolling amd64, kernel `6.19.14+kali-amd64`, GNOME Wayland |
 | Fingerprint driver | FPC `10a5:a900`, `L:0002 FW:22.26.2.43` | Kali `libfprint 1.94.10` base and `fprintd 1.94.5-4+b2` |
 | Fingerprint app | Standard fprintd D-Bus API | GNOME Wayland and GTK 4 |
+| Speakers | Realtek ALC256 codec subsystem `1ee7:2060` with Intel SOF | MRA-XXX M1020, kernel `6.19.14+kali-amd64` |
+| Boot theme | Frieren for the existing GNU GRUB UEFI menu | Kali amd64, GRUB `2.14-2+kali1` |
 
 ## Fingerprint app
 
@@ -23,6 +25,17 @@ Open **HonorKit** from GNOME or type `honorkit` in a graphical session. The comm
 The interface is in Russian. The application includes an enrollment animation and configurable feedback after fingerprint unlock. The settings dialog can also enable, disable, and swap supported touchpad gestures and set haptic strength when the system helper is installed.
 
 [Русское руководство пользователя](docs/USAGE.ru.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Architecture and security boundaries](docs/ARCHITECTURE.md)
+
+## Boot theme and speakers
+
+Run `make install-grub-theme` from the HonorKit checkout to install the full
+Frieren boot menu and its Enter fix on the supported GRUB build. The theme
+includes the background, icons, selection highlight, and countdown.
+For installation through **HonorKit → Настройки → Системные компоненты**,
+first run `make install-system-tools`. The Frieren theme and the Realtek
+speaker patch can be managed independently.
+
+[Compatibility, Enter fix, and recovery](system/INSTALL.ru.md)
 
 ## Touchpad
 

@@ -1,0 +1,92 @@
+# Frieren — The Grimoire of Paths
+# This theme decorates GRUB's real menu; it does not define boot entries.
+title-text: ""
+desktop-image: "background.png"
+desktop-image-scale-method: "crop"
+desktop-color: "#0a1122"
+terminal-left: "5%"
+terminal-top: "5%"
+terminal-width: "90%"
+terminal-height: "90%"
+terminal-border: "12"
+
++ image {
+  left = 70%-100
+  top = 21%
+  width = 200
+  height = 200
+  file = "seal.png"
+}
++ label {
+  left = 44%
+  top = 33%
+  width = 52%
+  align = "center"
+  text = "FRIEREN"
+  font = "DejaVu Serif Bold 70"
+  color = "#fff2d7"
+}
++ label {
+  left = 44%
+  top = 39%
+  width = 52%
+  align = "center"
+  text = "The Grimoire of Paths"
+  font = "DejaVu Sans Bold 30"
+  color = "#fff1db"
+}
++ boot_menu {
+  left = 48%
+  top = 47%
+  width = 44%
+  height = 27%
+  item_font = "DejaVu Sans Bold 42"
+  item_color = "#ffffff"
+  selected_item_color = "#fff2cd"
+  selected_item_pixmap_style = "select_*.png"
+  item_height = 78
+  item_padding = 10
+  item_spacing = 15
+  icon_width = 38
+  icon_height = 38
+  item_icon_space = 24
+}
++ label {
+  id = "__timeout__"
+  left = 44%
+  top = 75%
+  width = 52%
+  align = "center"
+  text = "The spell completes in %d seconds"
+  font = "DejaVu Sans Bold 30"
+  color = "#fff1db"
+}
++ progress_bar {
+  id = "__timeout__"
+  left = 49%
+  top = 79%
+  width = 42%
+  height = 8
+  fg_color = "#dcb574"
+  bg_color = "#26314b"
+  border_color = "#716048"
+  show_text = false
+}
++ label {
+  left = 44%
+  top = 83%
+  width = 52%
+  text = "↑ ↓  SELECT     ENTER  BOOT     ESC  BACK"
+  align = "center"
+  font = "DejaVu Sans Bold 30"
+  color = "#f3f6ff"
+}
+
+# GRUB paints canvas children in reverse declaration order.
++ image {
+  left = 44%
+  top = 17%
+  width = 52%
+  height = 71%
+  file = "panel.png"
+}

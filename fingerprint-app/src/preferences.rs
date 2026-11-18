@@ -204,6 +204,7 @@ pub fn show(parent: &gtk::ApplicationWindow) {
             );
         }
     });
+    crate::system_tools::append_to(&root);
     window.present();
 }
 
