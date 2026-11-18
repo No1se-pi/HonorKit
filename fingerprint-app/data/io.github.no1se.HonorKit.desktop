@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=HonorKit
+GenericName=Fingerprint Manager
+GenericName[ru]=Менеджер отпечатков
+Comment=Enroll and remove fingerprints
+Comment[ru]=Регистрация и удаление отпечатков
+Exec=honorkit
+Icon=auth-fingerprint-symbolic
+Terminal=false
+Categories=Settings;
+Keywords=fingerprint;biometrics;HONOR;fprintd;
+Keywords[ru]=отпечатки;биометрия;HONOR;fprintd;
+StartupNotify=true

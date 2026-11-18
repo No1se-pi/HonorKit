@@ -16,3 +16,19 @@ build/test-gestures: gesture/test-gestures.c gesture/gesture-daemon.c
 
 test-gestures: build/test-gestures
 	./build/test-gestures
+
+CARGO ?= cargo
+USER_PREFIX ?= $(HOME)/.local
+APPLICATIONS_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/applications
+APP_DESKTOP := io.github.no1se.HonorKit.desktop
+
+.PHONY: app install-app uninstall-app
+app:
+	$(CARGO) build --locked --manifest-path fingerprint-app/Cargo.toml
+
+install-app: app
+	install -Dm 0755 fingerprint-app/target/debug/honorkit "$(USER_PREFIX)/bin/honorkit"
+	install -Dm 0644 "fingerprint-app/data/$(APP_DESKTOP)" "$(APPLICATIONS_DIR)/$(APP_DESKTOP)"
+
+uninstall-app:
+	rm -f -- "$(USER_PREFIX)/bin/honorkit" "$(APPLICATIONS_DIR)/$(APP_DESKTOP)"

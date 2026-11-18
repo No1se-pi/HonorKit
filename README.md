@@ -1,6 +1,6 @@
-# HONOR MagicBook Art 14 on Kali Linux
+# HonorKit
 
-Linux support for the HONOR MagicBook Art 14 (MRA-XXX), with a small Rust/GTK 4 app for managing fingerprints through fprintd.
+Touchpad and biometric support for the HONOR MagicBook Art 14 (MRA-XXX), with a small Rust/GTK 4 app for managing fingerprints through fprintd.
 
 | Component | Hardware or interface | Tested on |
 | --- | --- | --- |
@@ -12,13 +12,17 @@ Linux support for the HONOR MagicBook Art 14 (MRA-XXX), with a small Rust/GTK 4 
 
 The app lists fingerprints for the current user, guides enrollment with an animated fingerprint and progress, and deletes one selected fingerprint after confirmation. It uses the desktop's existing Polkit authorization and respects GTK's animation setting. Run it as a regular user in your graphical session.
 
-On Kali, install `libgtk-4-dev` and `pkgconf` and use Rust 1.92 or later. The app uses GTK 4.10 or later. With a working fprintd device, launch it from the repository root:
+On Kali, install `libgtk-4-dev`, `pkgconf` and `make`. Use Rust 1.92 or later and GTK 4.10 or later. Then build HonorKit and add its icon to the current user's GNOME application menu:
 
 ```bash
-cargo run --locked --manifest-path fingerprint-app/Cargo.toml
+make install-app
 ```
 
-The app's interface is in Russian. The animation is part of the enrollment window. GNOME's login and lock screens use their existing interface.
+Open **HonorKit** from GNOME or type `honorkit` in a graphical session. The command opens the same window. For a one-off run from source, use `cargo run --locked --manifest-path fingerprint-app/Cargo.toml`. Run `make uninstall-app` to remove the user-level launcher and executable.
+
+The interface is in Russian. The enrollment animation runs inside HonorKit. GNOME's login and lock screens use their existing interface.
+
+[Русское руководство пользователя](docs/USAGE.ru.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Architecture and security boundaries](docs/ARCHITECTURE.md)
 
 ## Touchpad
 

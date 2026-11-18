@@ -56,7 +56,7 @@ impl View {
     fn new(app: &gtk::Application) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("Отпечатки")
+            .title("HonorKit")
             .default_width(510)
             .default_height(490)
             .build();
@@ -338,7 +338,7 @@ impl View {
                 finger_label(&finger)
             ))
             .build();
-        dialog.set_buttons(&["Отмена", "Удалить"]);
+        dialog.set_buttons(&["Отмена", "Удалить отпечаток"]);
         dialog.set_cancel_button(0);
         dialog.set_default_button(0);
         let view = self.clone();
@@ -539,8 +539,9 @@ fn main() -> glib::ExitCode {
         eprintln!("Запускайте приложение из графического сеанса обычного пользователя.");
         return glib::ExitCode::FAILURE;
     }
+    glib::set_application_name("HonorKit");
     let app = gtk::Application::builder()
-        .application_id("io.github.honormra.Fingerprints")
+        .application_id("io.github.no1se.HonorKit")
         .build();
     app.connect_startup(|_| {
         let css = gtk::CssProvider::new();
