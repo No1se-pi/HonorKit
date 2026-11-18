@@ -1,0 +1,12 @@
+/build/
+/fingerprint/stage/
+/fingerprint/stage.sha256
+/fingerprint-app/target/
+**/__pycache__/
+*.so
+*.so.*
+*.deb
+*.zip
+*.tar.gz
+*.log
+*.status

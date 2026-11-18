@@ -1,0 +1,34 @@
+--- a/libfprint/drivers/fpcmoh/fpc.c
++++ b/libfprint/drivers/fpcmoh/fpc.c
+@@ -201,7 +201,6 @@
+ } CommandData;
+ 
+ static const FpIdEntry id_table[] = {
+-  { .vid = 0x10A5,  .pid = 0x9800,  },
+   { .vid = 0x10A5,  .pid = 0xA900,  },   /* Honor MagicBook, FPC "Disum", FW 22.26.2.29 */
+   { .vid = 0,  .pid = 0,  .driver_data = 0 },   /* terminating entry */
+ };
+@@ -1835,6 +1834,14 @@
+ 
+   uint16_t hwid = GUINT16_FROM_BE (ini->hw_id);
+ 
++  /* The Lenovo matcher relayout has only been derived for this geometry. */
++  if (hwid != 0x0331 || pDevCtx->img_w != 64 || pDevCtx->img_h != 176)
++    {
++      fp_err ("Unexpected FPC sensor geometry: hwid=%#x, %u x %u",
++              hwid, pDevCtx->img_w, pDevCtx->img_h);
++      return -1;
++    }
++
+   if (hwid)
+     {
+       if (pDevCtx->initialized == FALSE)
+@@ -1848,7 +1855,7 @@
+     }
+ 
+   fp_dbg ("%s: hwid(%#04x), img_w %u, img_h %u", G_STRFUNC, hwid, pDevCtx->img_w, pDevCtx->img_h);
+-  fp_dbg ("%s: version: %s", G_STRFUNC, ini->fw_version);
++  fp_dbg ("%s: version: %.*s", G_STRFUNC, (int) sizeof (ini->fw_version), ini->fw_version);
+ 
+   return 0;
+ }

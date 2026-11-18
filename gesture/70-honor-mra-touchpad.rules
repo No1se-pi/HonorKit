@@ -1,0 +1,1 @@
+SUBSYSTEM=="hidraw", SUBSYSTEMS=="hid", KERNELS=="0018:35CC:0104.*", SYMLINK+="honor-mra-touchpad", TAG+="systemd", ENV{SYSTEMD_ALIAS}="/dev/honor-mra-touchpad", ENV{SYSTEMD_WANTS}+="honor-mra-gestures.service"

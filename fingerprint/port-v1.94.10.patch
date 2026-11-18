@@ -1,0 +1,55 @@
+diff --git a/libfprint/fprint-list-udev-hwdb.c b/libfprint/fprint-list-udev-hwdb.c
+index 0527db1..671e6f7 100644
+--- a/libfprint/fprint-list-udev-hwdb.c
++++ b/libfprint/fprint-list-udev-hwdb.c
+@@ -98,7 +98,6 @@ static const FpIdEntry allowlist_id_table[] = {
+   { .vid = 0x10a5, .pid = 0x9200 },
+   { .vid = 0x10a5, .pid = 0x9800 },
+   { .vid = 0x10a5, .pid = 0xa120 },
+-  { .vid = 0x10a5, .pid = 0xa900 },
+   { .vid = 0x10a5, .pid = 0xe340 },
+   { .vid = 0x1188, .pid = 0x9545 },
+   { .vid = 0x138a, .pid = 0x0007 },
+diff --git a/libfprint/meson.build b/libfprint/meson.build
+index 3449481..e7585b8 100644
+--- a/libfprint/meson.build
++++ b/libfprint/meson.build
+@@ -149,6 +149,8 @@ driver_sources = {
+         [ 'drivers/goodixmoc/goodix.c', 'drivers/goodixmoc/goodix_proto.c' ],
+     'fpcmoc' :
+         [ 'drivers/fpcmoc/fpc.c' ],
++    'fpcmoh' :
++        [ 'drivers/fpcmoh/fpc.c' ],
+     'realtek' :
+         [ 'drivers/realtek/realtek.c' ],
+     'focaltech_moc' :
+@@ -166,6 +168,8 @@ helper_sources = {
+         [ ],
+     'udev' :
+         [ ],
++    'fpcbep' :
++        [ ],
+     'virtual' :
+         [ 'drivers/virtual-device-listener.c' ],
+ }
+diff --git a/meson.build b/meson.build
+index 14fb11f..abf8f10 100644
+--- a/meson.build
++++ b/meson.build
+@@ -211,6 +211,7 @@ driver_helper_mapping = {
+     'aes4000' : [ 'aeslib', 'aes3k' ],
+     'uru4000' : [ 'openssl' ],
+     'elanspi' : [ 'udev' ],
++    'fpcmoh' : [ 'fpcbep' ],
+     'virtual_image'          : [ 'virtual' ],
+     'virtual_device'         : [ 'virtual' ],
+     'virtual_device_storage' : [ 'virtual' ],
+@@ -273,6 +274,8 @@ foreach i : driver_helpers
+         endif
+ 
+         optional_deps += openssl_dep
++    elif i == 'fpcbep'
++        optional_deps += cc.find_library('fpcbep', required: true)
+     elif i == 'udev'
+         install_udev_rules = true
+ 

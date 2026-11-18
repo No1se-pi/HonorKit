@@ -1,0 +1,31 @@
+[Unit]
+Description=HONOR MagicBook Art touchpad gestures
+BindsTo=dev-honor\x2dmra\x2dtouchpad.device
+After=dev-honor\x2dmra\x2dtouchpad.device systemd-modules-load.service
+ConditionPathExists=/dev/uinput
+
+[Service]
+Type=exec
+ExecStart=/usr/local/libexec/honor-mra-gesture-daemon
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=3s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+DevicePolicy=closed
+DeviceAllow=/dev/honor-mra-touchpad r
+DeviceAllow=/dev/uinput w

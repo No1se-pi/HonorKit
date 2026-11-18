@@ -1,0 +1,19 @@
+.scanner {
+    color: #eaf4ff;
+    background: linear-gradient(143deg, #17283d, #101a2a 63%, #132337);
+    border: 1px solid #344d68;
+    border-radius: 22px;
+    padding: 10px 18px 22px;
+}
+.scanner-status { font-size: 1.16em; font-weight: 700; }
+.scanner-reader { color: #a6bbd1; font-size: 0.88em; }
+.scanner progressbar { color: #bbcfe5; margin-top: 6px; }
+.scanner progressbar trough { background-color: #233852; }
+.scanner progressbar progress { background-color: #7cb8ff; }
+.section-title { font-weight: 700; }
+.boxed-prints {
+    border: 1px solid alpha(currentColor, 0.15);
+    border-radius: 12px;
+}
+.boxed-prints row + row { border-top: 1px solid alpha(currentColor, 0.12); }
+.print-row { padding: 7px 12px; min-height: 32px; }
